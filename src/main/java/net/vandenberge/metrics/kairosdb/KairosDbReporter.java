@@ -1,8 +1,9 @@
 package net.vandenberge.metrics.kairosdb;
 
-import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
@@ -10,17 +11,19 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.codahale.metrics.Clock;
-import com.codahale.metrics.Counter;
-import com.codahale.metrics.Gauge;
-import com.codahale.metrics.Histogram;
-import com.codahale.metrics.Meter;
-import com.codahale.metrics.Metered;
-import com.codahale.metrics.MetricFilter;
-import com.codahale.metrics.MetricRegistry;
-import com.codahale.metrics.ScheduledReporter;
-import com.codahale.metrics.Snapshot;
-import com.codahale.metrics.Timer;
+import com.yammer.metrics.core.Clock;
+import com.yammer.metrics.core.Counter;
+import com.yammer.metrics.core.Gauge;
+import com.yammer.metrics.core.Histogram;
+import com.yammer.metrics.core.Metered;
+import com.yammer.metrics.core.Metric;
+import com.yammer.metrics.core.MetricName;
+import com.yammer.metrics.core.MetricPredicate;
+import com.yammer.metrics.core.MetricProcessor;
+import com.yammer.metrics.core.MetricsRegistry;
+import com.yammer.metrics.core.Timer;
+import com.yammer.metrics.reporting.AbstractPollingReporter;
+import com.yammer.metrics.stats.Snapshot;
 
 /**
  * A reporter which publishes metric values to a KairosDB server.
@@ -28,14 +31,23 @@ import com.codahale.metrics.Timer;
  * @see <a href="https://code.google.com/p/kairosdb/">KairosDB - Fast scalable
  *      time series database</a>
  */
-public class KairosDbReporter extends ScheduledReporter {
+public class KairosDbReporter extends AbstractPollingReporter implements MetricProcessor<KairosDbReporter.Context> {
 
 	private static final Pattern TAG_PATTERN = Pattern.compile("[\\p{Alnum}\\.\\-_/]+");
 	private static final Logger LOGGER = LoggerFactory.getLogger(KairosDbReporter.class);
 
-	private final KairosDb client;
+	private final KairosDbClient client;
 	private final Clock clock;
 	private final String prefix;
+	private final MetricPredicate predicate;
+
+	public static class Context {
+		private long time;
+
+		private Context(long time) {
+			this.time = time;
+		}
+	}
 
 	/**
 	 * Returns a new {@link Builder} for {@link KairosDbReporter}.
@@ -44,7 +56,7 @@ public class KairosDbReporter extends ScheduledReporter {
 	 *            the registry to report
 	 * @return a {@link Builder} instance for a {@link KairosDbReporter}
 	 */
-	public static Builder forRegistry(MetricRegistry registry) {
+	public static Builder forRegistry(MetricsRegistry registry) {
 		return new Builder(registry);
 	}
 
@@ -54,21 +66,21 @@ public class KairosDbReporter extends ScheduledReporter {
 	 * converting durations to milliseconds, and not filtering metrics.
 	 */
 	public static class Builder {
-		private final MetricRegistry registry;
+		private final MetricsRegistry registry;
 		private Clock clock;
 		private String prefix;
 		private TimeUnit rateUnit;
 		private TimeUnit durationUnit;
-		private MetricFilter filter;
+		private MetricPredicate filter;
 		private Map<String, String> tags;
 
-		private Builder(MetricRegistry registry) {
+		private Builder(MetricsRegistry registry) {
 			this.registry = registry;
 			this.clock = Clock.defaultClock();
 			this.prefix = null;
 			this.rateUnit = TimeUnit.SECONDS;
 			this.durationUnit = TimeUnit.MILLISECONDS;
-			this.filter = MetricFilter.ALL;
+			this.filter = MetricPredicate.ALL;
 			this.tags = new LinkedHashMap<String, String>();
 		}
 
@@ -121,8 +133,12 @@ public class KairosDbReporter extends ScheduledReporter {
 		}
 
 		/**
-		 * Add a tag to each submitted metric. Both tag name and value must match the following regular expression:
-		 * <pre>[\p{Alnum}\.\-_/]+</pre>
+		 * Add a tag to each submitted metric. Both tag name and value must
+		 * match the following regular expression:
+		 * 
+		 * <pre>
+		 * [\p{Alnum}\.\-_/]+
+		 * </pre>
 		 * 
 		 * @param tagName
 		 *            the tag name
@@ -136,6 +152,14 @@ public class KairosDbReporter extends ScheduledReporter {
 			return this;
 		}
 
+		public Builder withTags(Map<String, String> tags) {
+			for (Entry<String, String> tag : tags.entrySet()) {
+				validateTag(tag.getKey(), tag.getValue());
+			}
+			this.tags.putAll(tags);
+			return this;
+		}
+
 		/**
 		 * Only report metrics which match the given filter.
 		 * 
@@ -143,20 +167,20 @@ public class KairosDbReporter extends ScheduledReporter {
 		 *            a {@link MetricFilter}
 		 * @return {@code this}
 		 */
-		public Builder filter(MetricFilter filter) {
+		public Builder filter(MetricPredicate filter) {
 			this.filter = filter;
 			return this;
 		}
 
 		/**
 		 * Builds a {@link KairosDbReporter} with the given properties, sending
-		 * metrics using the given {@link Graphite} client.
+		 * metrics using the given {@link KairosDbClient} client.
 		 * 
 		 * @param kairosDb
 		 *            a {@link KairosDb} client
 		 * @return a {@link KairosDbReporter}
 		 */
-		public KairosDbReporter build(KairosDb kairosDb) {
+		public KairosDbReporter build(KairosDbClient kairosDb) {
 			kairosDb.setTags(tags);
 			return new KairosDbReporter(registry, kairosDb, clock, prefix, rateUnit, durationUnit, filter);
 		}
@@ -176,101 +200,71 @@ public class KairosDbReporter extends ScheduledReporter {
 		}
 	}
 
-	private KairosDbReporter(MetricRegistry registry, KairosDb kairosDb, Clock clock, String prefix, TimeUnit rateUnit,
-			TimeUnit durationUnit, MetricFilter filter) {
-		super(registry, "kairosdb-reporter", filter, rateUnit, durationUnit);
+	private KairosDbReporter(MetricsRegistry registry, KairosDbClient kairosDb, Clock clock, String prefix,
+			TimeUnit rateUnit, TimeUnit durationUnit, MetricPredicate predicate) {
+		super(registry, "kairosdb-reporter");
 		this.client = kairosDb;
 		this.clock = clock;
 		this.prefix = prefix;
+		this.predicate = predicate;
 	}
 
 	@Override
-	public void report(SortedMap<String, Gauge> gauges, SortedMap<String, Counter> counters, SortedMap<String, Histogram> histograms,
-			SortedMap<String, Meter> meters, SortedMap<String, Timer> timers) {
-		final long timestamp = clock.getTime();
-
-		try {
-			client.connect();
-
-			for (Map.Entry<String, Gauge> entry : gauges.entrySet()) {
-				reportGauge(entry.getKey(), entry.getValue(), timestamp);
-			}
-
-			for (Map.Entry<String, Counter> entry : counters.entrySet()) {
-				reportCounter(entry.getKey(), entry.getValue(), timestamp);
-			}
-
-			for (Map.Entry<String, Histogram> entry : histograms.entrySet()) {
-				reportHistogram(entry.getKey(), entry.getValue(), timestamp);
-			}
-
-			for (Map.Entry<String, Meter> entry : meters.entrySet()) {
-				reportMetered(entry.getKey(), entry.getValue(), timestamp);
-			}
-
-			for (Map.Entry<String, Timer> entry : timers.entrySet()) {
-				reportTimer(entry.getKey(), entry.getValue(), timestamp);
-			}
-		} catch (IOException e) {
-			LOGGER.warn("Unable to report to server", client, e);
-		} finally {
-			try {
-				client.close();
-			} catch (IOException e) {
-				LOGGER.debug("Error disconnecting from server", client, e);
-			}
-		}
-	}
-
-	private void reportTimer(String name, Timer timer, long timestamp) throws IOException {
+	public void processTimer(MetricName metricName, Timer timer, Context context) throws Exception {
+		processMeter(metricName, timer, context);
 		final Snapshot snapshot = timer.getSnapshot();
-
-		client.send(prefix(name, "max"), format(convertDuration(snapshot.getMax())), timestamp);
-		client.send(prefix(name, "mean"), format(convertDuration(snapshot.getMean())), timestamp);
-		client.send(prefix(name, "min"), format(convertDuration(snapshot.getMin())), timestamp);
-		client.send(prefix(name, "stddev"), format(convertDuration(snapshot.getStdDev())), timestamp);
-		client.send(prefix(name, "p50"), format(convertDuration(snapshot.getMedian())), timestamp);
-		client.send(prefix(name, "p75"), format(convertDuration(snapshot.get75thPercentile())), timestamp);
-		client.send(prefix(name, "p95"), format(convertDuration(snapshot.get95thPercentile())), timestamp);
-		client.send(prefix(name, "p98"), format(convertDuration(snapshot.get98thPercentile())), timestamp);
-		client.send(prefix(name, "p99"), format(convertDuration(snapshot.get99thPercentile())), timestamp);
-		client.send(prefix(name, "p999"), format(convertDuration(snapshot.get999thPercentile())), timestamp);
-
-		reportMetered(name, timer, timestamp);
+		client.send(name(metricName, "max"), format(timer.max()), context.time);
+		client.send(name(metricName, "mean"), format(timer.mean()), context.time);
+		client.send(name(metricName, "min"), format(timer.min()), context.time);
+		client.send(name(metricName, "stddev"), format(timer.stdDev()), context.time);
+		client.send(name(metricName, "p50"), format(snapshot.getMedian()), context.time);
+		client.send(name(metricName, "p75"), format(snapshot.get75thPercentile()), context.time);
+		client.send(name(metricName, "p95"), format(snapshot.get95thPercentile()), context.time);
+		client.send(name(metricName, "p98"), format(snapshot.get98thPercentile()), context.time);
+		client.send(name(metricName, "p99"), format(snapshot.get99thPercentile()), context.time);
+		client.send(name(metricName, "p999"), format(snapshot.get999thPercentile()), context.time);
 	}
 
-	private void reportMetered(String name, Metered meter, long timestamp) throws IOException {
-		client.send(prefix(name, "count"), format(meter.getCount()), timestamp);
-		client.send(prefix(name, "m1_rate"), format(convertRate(meter.getOneMinuteRate())), timestamp);
-		client.send(prefix(name, "m5_rate"), format(convertRate(meter.getFiveMinuteRate())), timestamp);
-		client.send(prefix(name, "m15_rate"), format(convertRate(meter.getFifteenMinuteRate())), timestamp);
-		client.send(prefix(name, "mean_rate"), format(convertRate(meter.getMeanRate())), timestamp);
+	@Override
+	public void processMeter(MetricName metricName, Metered meter, Context context) throws Exception {
+		client.send(name(metricName, "count"), format(meter.count()), context.time);
+		client.send(name(metricName, "m1_rate"), format(meter.oneMinuteRate()), context.time);
+		client.send(name(metricName, "m5_rate"), format(meter.fiveMinuteRate()), context.time);
+		client.send(name(metricName, "m15_rate"), format(meter.fifteenMinuteRate()), context.time);
+		client.send(name(metricName, "mean_rate"), format(meter.meanRate()), context.time);
 	}
 
-	private void reportHistogram(String name, Histogram histogram, long timestamp) throws IOException {
+	@Override
+	public void processHistogram(MetricName metricName, Histogram histogram, Context context) throws Exception {
 		final Snapshot snapshot = histogram.getSnapshot();
-		client.send(prefix(name, "count"), format(histogram.getCount()), timestamp);
-		client.send(prefix(name, "max"), format(snapshot.getMax()), timestamp);
-		client.send(prefix(name, "mean"), format(snapshot.getMean()), timestamp);
-		client.send(prefix(name, "min"), format(snapshot.getMin()), timestamp);
-		client.send(prefix(name, "stddev"), format(snapshot.getStdDev()), timestamp);
-		client.send(prefix(name, "p50"), format(snapshot.getMedian()), timestamp);
-		client.send(prefix(name, "p75"), format(snapshot.get75thPercentile()), timestamp);
-		client.send(prefix(name, "p95"), format(snapshot.get95thPercentile()), timestamp);
-		client.send(prefix(name, "p98"), format(snapshot.get98thPercentile()), timestamp);
-		client.send(prefix(name, "p99"), format(snapshot.get99thPercentile()), timestamp);
-		client.send(prefix(name, "p999"), format(snapshot.get999thPercentile()), timestamp);
+		client.send(name(metricName, "count"), format(histogram.count()), context.time);
+		client.send(name(metricName, "max"), format(histogram.max()), context.time);
+		client.send(name(metricName, "mean"), format(histogram.mean()), context.time);
+		client.send(name(metricName, "min"), format(histogram.min()), context.time);
+		client.send(name(metricName, "stddev"), format(histogram.stdDev()), context.time);
+		client.send(name(metricName, "p50"), format(snapshot.getMedian()), context.time);
+		client.send(name(metricName, "p75"), format(snapshot.get75thPercentile()), context.time);
+		client.send(name(metricName, "p95"), format(snapshot.get95thPercentile()), context.time);
+		client.send(name(metricName, "p98"), format(snapshot.get98thPercentile()), context.time);
+		client.send(name(metricName, "p99"), format(snapshot.get99thPercentile()), context.time);
+		client.send(name(metricName, "p999"), format(snapshot.get999thPercentile()), context.time);
 	}
 
-	private void reportCounter(String name, Counter counter, long timestamp) throws IOException {
-		client.send(prefix(name, "count"), format(counter.getCount()), timestamp);
+	@Override
+	public void processCounter(MetricName metricName, Counter counter, Context context) throws Exception {
+		client.send(name(metricName, "count"), format(counter.count()), context.time);
 	}
 
-	private void reportGauge(String name, Gauge<?> gauge, long timestamp) throws IOException {
-		final String value = format(gauge.getValue());
+	@Override
+	public void processGauge(MetricName metricName, Gauge<?> gauge, Context context) throws Exception {
+		final String value = format(gauge.value());
 		if (value != null) {
-			client.send(prefix(name), value, timestamp);
+			client.send(name(metricName, null), value, context.time);
 		}
+	}
+
+	private String name(MetricName metricName, String suffix) {
+		return name(prefix, metricName.getType(), metricName.getScope(), metricName.getName(), suffix);
 	}
 
 	private String format(Object o) {
@@ -290,15 +284,57 @@ public class KairosDbReporter extends ScheduledReporter {
 		return null;
 	}
 
-	private String prefix(String... components) {
-		return MetricRegistry.name(prefix, components);
-	}
-
 	private String format(long n) {
 		return Long.toString(n);
 	}
 
 	private String format(double v) {
 		return Double.toString(v);
+	}
+
+	@Override
+	public void run() {
+		LOGGER.debug("Starting KairosDbReporter run.");
+		try {
+			Set<Entry<String, SortedMap<MetricName, Metric>>> groupedMetrics = getMetricsRegistry().groupedMetrics(
+					predicate).entrySet();
+			for (Entry<String, SortedMap<MetricName, Metric>> entry : groupedMetrics) {
+				for (Entry<MetricName, Metric> subEntry : entry.getValue().entrySet()) {
+					subEntry.getValue().processWith(this, subEntry.getKey(), new Context(clock.time()));
+				}
+			}
+		} catch (Exception e) {
+			LOGGER.error("Error while reporting metrics to KairosDb", e);
+		}
+	}
+
+	/**
+	 * Concatenates elements to form a dotted name, eliding any null values or
+	 * empty strings.
+	 *
+	 * @param name
+	 *            the first element of the name
+	 * @param names
+	 *            the remaining elements of the name
+	 * @return {@code name} and {@code names} concatenated by periods
+	 */
+	public static String name(String name, String... names) {
+		final StringBuilder builder = new StringBuilder();
+		append(builder, name);
+		if (names != null) {
+			for (String s : names) {
+				append(builder, s);
+			}
+		}
+		return builder.toString();
+	}
+
+	private static void append(StringBuilder builder, String part) {
+		if (part != null && !part.isEmpty()) {
+			if (builder.length() > 0) {
+				builder.append('.');
+			}
+			builder.append(part);
+		}
 	}
 }
