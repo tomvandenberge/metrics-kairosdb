@@ -132,7 +132,6 @@ public class KairosDb implements KairosDbClient {
 		}
 	}
 
-	@Override
 	public void close() throws IOException {
 		if (socket != null) {
 			socket.close();

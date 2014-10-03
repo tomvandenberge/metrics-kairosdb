@@ -209,7 +209,6 @@ public class KairosDbReporter extends AbstractPollingReporter implements MetricP
 		this.predicate = predicate;
 	}
 
-	@Override
 	public void processTimer(MetricName metricName, Timer timer, Context context) throws Exception {
 		processMeter(metricName, timer, context);
 		final Snapshot snapshot = timer.getSnapshot();
@@ -225,7 +224,6 @@ public class KairosDbReporter extends AbstractPollingReporter implements MetricP
 		client.send(name(metricName, "p999"), format(snapshot.get999thPercentile()), context.time);
 	}
 
-	@Override
 	public void processMeter(MetricName metricName, Metered meter, Context context) throws Exception {
 		client.send(name(metricName, "count"), format(meter.count()), context.time);
 		client.send(name(metricName, "m1_rate"), format(meter.oneMinuteRate()), context.time);
@@ -234,7 +232,6 @@ public class KairosDbReporter extends AbstractPollingReporter implements MetricP
 		client.send(name(metricName, "mean_rate"), format(meter.meanRate()), context.time);
 	}
 
-	@Override
 	public void processHistogram(MetricName metricName, Histogram histogram, Context context) throws Exception {
 		final Snapshot snapshot = histogram.getSnapshot();
 		client.send(name(metricName, "count"), format(histogram.count()), context.time);
@@ -250,12 +247,10 @@ public class KairosDbReporter extends AbstractPollingReporter implements MetricP
 		client.send(name(metricName, "p999"), format(snapshot.get999thPercentile()), context.time);
 	}
 
-	@Override
 	public void processCounter(MetricName metricName, Counter counter, Context context) throws Exception {
 		client.send(name(metricName, "count"), format(counter.count()), context.time);
 	}
 
-	@Override
 	public void processGauge(MetricName metricName, Gauge<?> gauge, Context context) throws Exception {
 		final String value = format(gauge.value());
 		if (value != null) {
