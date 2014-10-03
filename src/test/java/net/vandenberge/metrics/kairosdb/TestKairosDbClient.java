@@ -8,8 +8,9 @@ import java.util.Map;
 public class TestKairosDbClient implements KairosDbClient {
 
 	private Map<String, String> tags;
-	private List<Metric> metrics = new ArrayList<Metric>();
+	private List<Metric> metrics = new ArrayList<>();
 
+	@Override
 	public void setTags(Map<String, String> tags) {
 		this.tags = tags;
 	}
@@ -18,15 +19,18 @@ public class TestKairosDbClient implements KairosDbClient {
 		return tags;
 	}
 
+	@Override
 	public String connect() throws IOException {
 		return "<not connected to a real host>";
 	}
 
+	@Override
 	public void send(String name, String value, long timestamp)
 			throws IOException {
 		this.metrics.add(new Metric(name, value, timestamp));
 	}
 
+	@Override
 	public void close() throws IOException {
 
 	}

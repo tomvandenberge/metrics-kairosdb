@@ -20,6 +20,7 @@ import net.vandenberge.metrics.kairosdb.TestKairosDbClient.Metric;
 import org.junit.Assert;
 import org.junit.Test;
 
+import com.addthis.metrics.reporter.config.AbstractReporterConfig;
 import com.addthis.metrics.reporter.config.ConfiguredReporter;
 import com.addthis.metrics.reporter.config.ReporterConfig;
 import com.yammer.metrics.Metrics;
@@ -161,7 +162,7 @@ public class KairosDbReporterTest {
 		assertTrue(kairosDbClient instanceof TestKairosDbClient);
 		TestKairosDbClient testKairosDbClient = (TestKairosDbClient)kairosDbClient;
 
-		Map<String, String> expectedTags = new HashMap<String, String>();
+		Map<String, String> expectedTags = new HashMap<>();
 		expectedTags.put("host", "myhost");
 		assertEquals(expectedTags, testKairosDbClient.getTags());
 		List<Metric> metrics = testKairosDbClient.getMetrics();
