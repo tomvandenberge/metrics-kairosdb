@@ -28,7 +28,7 @@ public class KairosDbReporterConfig extends AbstractHostPortReporterConfig {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(KairosDbReporterConfig.class);
 	private KairosDbClient kairosDbClient;
-	private Map<String, String> tags;
+	private Map<String, String> tags = new HashMap<String, String>();
 
 	public void setKairosDbClient(KairosDbClient client) {
 		this.kairosDbClient = client;
@@ -39,7 +39,7 @@ public class KairosDbReporterConfig extends AbstractHostPortReporterConfig {
 	}
 
 	public void setTags(Map<String, String> tags) {
-		this.tags = new HashMap<>();
+		this.tags = new HashMap<String, String>();
 		for (Entry<String, String> tag : tags.entrySet()) {
 			this.tags.put(tag.getKey(), getHostTagValue(tag.getValue()));
 		}

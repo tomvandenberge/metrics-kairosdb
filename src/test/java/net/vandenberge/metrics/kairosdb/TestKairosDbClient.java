@@ -8,7 +8,7 @@ import java.util.Map;
 public class TestKairosDbClient implements KairosDbClient {
 
 	private Map<String, String> tags;
-	private List<Metric> metrics = new ArrayList<>();
+	private List<Metric> metrics = new ArrayList<Metric>();
 
 	@Override
 	public void setTags(Map<String, String> tags) {
