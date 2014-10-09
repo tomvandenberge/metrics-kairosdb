@@ -86,6 +86,13 @@ public class KairosDb implements Closeable {
 		this.writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), charset));
 	}
 
+	/**
+	 * Returns the KairosDB host address to which this client is or will connect.
+	 */
+	public InetSocketAddress getKairosHostAddress() {
+		return this.address;
+	}
+	
 	void setTags(Map<String, String> tags) {
 		this.tags = tags;
 	}
@@ -138,5 +145,10 @@ public class KairosDb implements Closeable {
 			throw new IllegalStateException("Not connected");
 		}
 		return writer;
+	}
+	
+	@Override
+	public String toString() {
+		return this.address.toString();
 	}
 }

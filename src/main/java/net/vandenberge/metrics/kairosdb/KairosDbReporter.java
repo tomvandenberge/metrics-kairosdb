@@ -212,12 +212,12 @@ public class KairosDbReporter extends ScheduledReporter {
 				reportTimer(entry.getKey(), entry.getValue(), timestamp);
 			}
 		} catch (IOException e) {
-			LOGGER.warn("Unable to report to server", client, e);
+			LOGGER.warn("Unable to report to server {}", client);
 		} finally {
 			try {
 				client.close();
 			} catch (IOException e) {
-				LOGGER.debug("Error disconnecting from server", client, e);
+				LOGGER.debug("Error disconnecting from server {}", client);
 			}
 		}
 	}
