@@ -1,0 +1,22 @@
+reporters:
+  -
+    !!net.vandenberge.metrics.kairosdb.KairosDbReporterConfig
+    period: 100
+    timeunit: 'MILLISECONDS'
+    hosts:
+      - {host: localhost, port: 4242}
+    tags: { host: myhost } 
+    kairosDbClient:
+      !!net.vandenberge.metrics.kairosdb.TestKairosDbClient {}
+#    predicate:
+#      color: "white"
+#      useQualifiedName: true
+#      patterns:
+#        - "^org.apache.cassandra.metrics.Cache.+"
+#        - "^org.apache.cassandra.metrics.ClientRequest.+" # includes ClientRequestMetrics
+#        - "^org.apache.cassandra.metrics.CommitLog.+"
+#        - "^org.apache.cassandra.metrics.Compaction.+"
+#        - "^org.apache.cassandra.metrics.DroppedMetrics.+"
+#        - "^org.apache.cassandra.metrics.ReadRepair.+"
+#        - "^org.apache.cassandra.metrics.Storage.+"
+#        - "^org.apache.cassandra.metrics.ThreadPools.+"
