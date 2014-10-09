@@ -1,6 +1,7 @@
 package net.vandenberge.metrics.kairosdb;
 
 import java.io.BufferedWriter;
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
@@ -14,14 +15,10 @@ import java.util.regex.Pattern;
 
 import javax.net.SocketFactory;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-public class KairosDb implements KairosDbClient {
+public class KairosDb implements Closeable {
 
 	private static final Pattern WHITESPACE = Pattern.compile("[\\s]+");
 	private static final Charset UTF_8 = Charset.forName("UTF-8");
-	private static final Logger LOGGER = LoggerFactory.getLogger(KairosDb.class);
 
 	private final InetSocketAddress address;
 	private final SocketFactory socketFactory;
@@ -76,22 +73,20 @@ public class KairosDb implements KairosDbClient {
 	 * Connects to the KairosDB server.
 	 * 
 	 * @throws IllegalStateException
-	 *             if the client is already connected.
+	 *             if the client is already connected
 	 * @throws IOException
-	 *             if there is an error connecting.
-	 * @return the name of the connected host and port.
+	 *             if there is an error connecting
 	 */
-	public String connect() throws IOException {
+	public void connect() throws IllegalStateException, IOException {
 		if (socket != null) {
 			throw new IllegalStateException("Already connected");
 		}
 
 		this.socket = socketFactory.createSocket(address.getAddress(), address.getPort());
 		this.writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), charset));
-		return address.toString();
 	}
 
-	public void setTags(Map<String, String> tags) {
+	void setTags(Map<String, String> tags) {
 		this.tags = tags;
 	}
 
@@ -108,28 +103,21 @@ public class KairosDb implements KairosDbClient {
 	 *             if there was an error sending the metric
 	 */
 	public void send(String name, String value, long timestamp) throws IOException {
-		StringBuilder builder = new StringBuilder();
 		Writer writer = getWriter();
-		builder.append("put ");
-		builder.append(sanitize(name));
-		builder.append(' ');
-		builder.append(Long.toString(timestamp));
-		builder.append(' ');
-		builder.append(sanitize(value));
+		writer.write("put ");
+		writer.write(sanitize(name));
+		writer.write(' ');
+		writer.write(Long.toString(timestamp));
+		writer.write(' ');
+		writer.write(sanitize(value));
 		for (Entry<String, String> entry : this.tags.entrySet()) {
-			builder.append(' ');
-			builder.append(entry.getKey());
-			builder.append('=');
-			builder.append(entry.getValue());
+			writer.write(' ');
+			writer.write(entry.getKey());
+			writer.write('=');
+			writer.write(entry.getValue());
 		}
-		builder.append('\n');
-		String message = builder.toString();
-		writer.write(message);
+		writer.write('\n');
 		writer.flush();
-		
-		if (LOGGER.isDebugEnabled()) {
-			LOGGER.debug(message);
-		}
 	}
 
 	@Override
