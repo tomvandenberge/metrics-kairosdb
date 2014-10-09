@@ -53,8 +53,7 @@ public class KairosDbReporterConfig extends AbstractHostPortReporterConfig {
 			}
 			String connectInfo = this.kairosDbClient.connect();
 
-			Builder builder = KairosDbReporter.forRegistry(Metrics.defaultRegistry()).filter(getMetricPredicate())
-					.filter(getMetricPredicate());
+			Builder builder = KairosDbReporter.forRegistry(Metrics.defaultRegistry()).filter(getMetricPredicate());
 			if (!this.tags.isEmpty()) {
 				builder.withTags(this.tags);
 			}
