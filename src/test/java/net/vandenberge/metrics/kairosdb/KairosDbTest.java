@@ -2,12 +2,14 @@ package net.vandenberge.metrics.kairosdb;
 
 import net.vandenberge.metrics.kairosdb.KairosDb;
 
+import org.fest.assertions.api.Assertions;
 import org.junit.Before;
 import org.junit.Test;
 
 import javax.net.SocketFactory;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -63,29 +65,66 @@ public class KairosDbTest {
     }
 
     @Test
-    public void writesValues() throws Exception {
+    public void writesIntegerValue() throws Exception {
         kairosDb.connect();
-        kairosDb.send("name", "value", 100);
+        kairosDb.send("name", 333, 100);
 
         assertThat(output.toString())
-                .isEqualTo("put name 100 value\n");
+                .isEqualTo("put name 100 333\n");
     }
 
+    @Test
+    public void writesDoubleValue() throws Exception {
+	    	kairosDb.connect();
+	    	kairosDb.send("name", 22.33, 100);
+	    	
+	    	assertThat(output.toString())
+	    	.isEqualTo("put name 100 22.33\n");
+    }
+
+    /**
+     * Infinity and Nan values are not sent. 
+     */
+    @Test
+    public void writesPositiveInfinity() throws IOException {
+	    	kairosDb.connect();
+	    	kairosDb.send("name", Double.POSITIVE_INFINITY, 100);
+	    	
+	    	assertThat(output.toString()).isEqualTo("");
+    }
+
+    @Test
+    public void writesNegativeInfinity() throws IOException {
+	    	kairosDb.connect();
+	    	kairosDb.send("name", Double.NEGATIVE_INFINITY, 100);
+	    	
+	    	assertThat(output.toString()).isEqualTo("");
+    }
+
+    @Test
+    public void writesNaN() throws IOException {
+	    	kairosDb.connect();
+	    	kairosDb.send("name", Double.NaN, 100);
+	    	
+	    	assertThat(output.toString()).isEqualTo("");
+    }
+    
+    @Test
+    public void isFinite() {
+    		assertThat(kairosDb.isFinite(Double.valueOf(123.123))).isTrue();
+    		assertThat(kairosDb.isFinite(Float.valueOf(123.123f))).isTrue();
+    		assertThat(kairosDb.isFinite(Double.MAX_VALUE)).isTrue();
+    		assertThat(kairosDb.isFinite(Double.NaN)).isFalse();
+    		assertThat(kairosDb.isFinite(Double.POSITIVE_INFINITY)).isFalse();
+    		assertThat(kairosDb.isFinite(Double.NEGATIVE_INFINITY)).isFalse();
+    }
+    
     @Test
     public void sanitizesNames() throws Exception {
         kairosDb.connect();
-        kairosDb.send("name woo", "value", 100);
+        kairosDb.send("name woo", 42, 100);
 
         assertThat(output.toString())
-                .isEqualTo("put name-woo 100 value\n");
-    }
-
-    @Test
-    public void sanitizesValues() throws Exception {
-        kairosDb.connect();
-        kairosDb.send("name", "value woo", 100);
-
-        assertThat(output.toString())
-                .isEqualTo("put name 100 value-woo\n");
+                .isEqualTo("put name-woo 100 42\n");
     }
 }

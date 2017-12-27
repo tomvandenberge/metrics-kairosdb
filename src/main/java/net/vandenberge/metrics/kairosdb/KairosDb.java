@@ -98,7 +98,7 @@ public class KairosDb implements Closeable {
 	}
 
 	/**
-	 * Sends the given measurement to the server.
+	 * Sends the given measurement to the server. If the value is an infinite value or NaN, nothing is sent.
 	 * 
 	 * @param name
 	 *            the name of the metric
@@ -109,14 +109,17 @@ public class KairosDb implements Closeable {
 	 * @throws IOException
 	 *             if there was an error sending the metric
 	 */
-	public void send(String name, String value, long timestamp) throws IOException {
+	public void send(String name, Number value, long timestamp) throws IOException {
+		if (!isFinite(value)) {
+			return;
+		}
 		Writer writer = getWriter();
 		writer.write("put ");
 		writer.write(sanitize(name));
 		writer.write(' ');
 		writer.write(Long.toString(timestamp));
 		writer.write(' ');
-		writer.write(sanitize(value));
+		writer.write(value.toString());
 		for (Entry<String, String> entry : this.tags.entrySet()) {
 			writer.write(' ');
 			writer.write(entry.getKey());
@@ -127,6 +130,15 @@ public class KairosDb implements Closeable {
 		writer.flush();
 	}
 
+	static boolean isFinite(Number number) {
+		if (number instanceof Double) {
+			return Double.isFinite((Double)number);
+		} else if (number instanceof Float) {
+			return Float.isFinite((Float)number);
+		}
+		return true;
+	}
+	
 	@Override
 	public void close() throws IOException {
 		if (socket != null) {

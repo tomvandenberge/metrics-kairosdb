@@ -225,80 +225,55 @@ public class KairosDbReporter extends ScheduledReporter {
 	private void reportTimer(String name, Timer timer, long timestamp) throws IOException {
 		final Snapshot snapshot = timer.getSnapshot();
 
-		client.send(prefix(name, "max"), format(convertDuration(snapshot.getMax())), timestamp);
-		client.send(prefix(name, "mean"), format(convertDuration(snapshot.getMean())), timestamp);
-		client.send(prefix(name, "min"), format(convertDuration(snapshot.getMin())), timestamp);
-		client.send(prefix(name, "stddev"), format(convertDuration(snapshot.getStdDev())), timestamp);
-		client.send(prefix(name, "p50"), format(convertDuration(snapshot.getMedian())), timestamp);
-		client.send(prefix(name, "p75"), format(convertDuration(snapshot.get75thPercentile())), timestamp);
-		client.send(prefix(name, "p95"), format(convertDuration(snapshot.get95thPercentile())), timestamp);
-		client.send(prefix(name, "p98"), format(convertDuration(snapshot.get98thPercentile())), timestamp);
-		client.send(prefix(name, "p99"), format(convertDuration(snapshot.get99thPercentile())), timestamp);
-		client.send(prefix(name, "p999"), format(convertDuration(snapshot.get999thPercentile())), timestamp);
+		client.send(prefix(name, "max"), convertDuration(snapshot.getMax()), timestamp);
+		client.send(prefix(name, "mean"), convertDuration(snapshot.getMean()), timestamp);
+		client.send(prefix(name, "min"), convertDuration(snapshot.getMin()), timestamp);
+		client.send(prefix(name, "stddev"), convertDuration(snapshot.getStdDev()), timestamp);
+		client.send(prefix(name, "p50"), convertDuration(snapshot.getMedian()), timestamp);
+		client.send(prefix(name, "p75"), convertDuration(snapshot.get75thPercentile()), timestamp);
+		client.send(prefix(name, "p95"), convertDuration(snapshot.get95thPercentile()), timestamp);
+		client.send(prefix(name, "p98"), convertDuration(snapshot.get98thPercentile()), timestamp);
+		client.send(prefix(name, "p99"), convertDuration(snapshot.get99thPercentile()), timestamp);
+		client.send(prefix(name, "p999"), convertDuration(snapshot.get999thPercentile()), timestamp);
 
 		reportMetered(name, timer, timestamp);
 	}
 
 	private void reportMetered(String name, Metered meter, long timestamp) throws IOException {
-		client.send(prefix(name, "count"), format(meter.getCount()), timestamp);
-		client.send(prefix(name, "m1_rate"), format(convertRate(meter.getOneMinuteRate())), timestamp);
-		client.send(prefix(name, "m5_rate"), format(convertRate(meter.getFiveMinuteRate())), timestamp);
-		client.send(prefix(name, "m15_rate"), format(convertRate(meter.getFifteenMinuteRate())), timestamp);
-		client.send(prefix(name, "mean_rate"), format(convertRate(meter.getMeanRate())), timestamp);
+		client.send(prefix(name, "count"), meter.getCount(), timestamp);
+		client.send(prefix(name, "m1_rate"), convertRate(meter.getOneMinuteRate()), timestamp);
+		client.send(prefix(name, "m5_rate"), convertRate(meter.getFiveMinuteRate()), timestamp);
+		client.send(prefix(name, "m15_rate"), convertRate(meter.getFifteenMinuteRate()), timestamp);
+		client.send(prefix(name, "mean_rate"), convertRate(meter.getMeanRate()), timestamp);
 	}
 
 	private void reportHistogram(String name, Histogram histogram, long timestamp) throws IOException {
 		final Snapshot snapshot = histogram.getSnapshot();
-		client.send(prefix(name, "count"), format(histogram.getCount()), timestamp);
-		client.send(prefix(name, "max"), format(snapshot.getMax()), timestamp);
-		client.send(prefix(name, "mean"), format(snapshot.getMean()), timestamp);
-		client.send(prefix(name, "min"), format(snapshot.getMin()), timestamp);
-		client.send(prefix(name, "stddev"), format(snapshot.getStdDev()), timestamp);
-		client.send(prefix(name, "p50"), format(snapshot.getMedian()), timestamp);
-		client.send(prefix(name, "p75"), format(snapshot.get75thPercentile()), timestamp);
-		client.send(prefix(name, "p95"), format(snapshot.get95thPercentile()), timestamp);
-		client.send(prefix(name, "p98"), format(snapshot.get98thPercentile()), timestamp);
-		client.send(prefix(name, "p99"), format(snapshot.get99thPercentile()), timestamp);
-		client.send(prefix(name, "p999"), format(snapshot.get999thPercentile()), timestamp);
+		client.send(prefix(name, "count"), histogram.getCount(), timestamp);
+		client.send(prefix(name, "max"), snapshot.getMax(), timestamp);
+		client.send(prefix(name, "mean"), snapshot.getMean(), timestamp);
+		client.send(prefix(name, "min"), snapshot.getMin(), timestamp);
+		client.send(prefix(name, "stddev"), snapshot.getStdDev(), timestamp);
+		client.send(prefix(name, "p50"), snapshot.getMedian(), timestamp);
+		client.send(prefix(name, "p75"), snapshot.get75thPercentile(), timestamp);
+		client.send(prefix(name, "p95"), snapshot.get95thPercentile(), timestamp);
+		client.send(prefix(name, "p98"), snapshot.get98thPercentile(), timestamp);
+		client.send(prefix(name, "p99"), snapshot.get99thPercentile(), timestamp);
+		client.send(prefix(name, "p999"), snapshot.get999thPercentile(), timestamp);
 	}
 
 	private void reportCounter(String name, Counter counter, long timestamp) throws IOException {
-		client.send(prefix(name, "count"), format(counter.getCount()), timestamp);
+		client.send(prefix(name, "count"), counter.getCount(), timestamp);
 	}
 
 	private void reportGauge(String name, Gauge<?> gauge, long timestamp) throws IOException {
-		final String value = format(gauge.getValue());
-		if (value != null) {
-			client.send(prefix(name), value, timestamp);
+		Object value = gauge.getValue();
+		if (value instanceof Number) {
+			client.send(prefix(name), (Number)value, timestamp);
 		}
-	}
-
-	private String format(Object o) {
-		if (o instanceof Float) {
-			return format(((Float) o).doubleValue());
-		} else if (o instanceof Double) {
-			return format(((Double) o).doubleValue());
-		} else if (o instanceof Byte) {
-			return format(((Byte) o).longValue());
-		} else if (o instanceof Short) {
-			return format(((Short) o).longValue());
-		} else if (o instanceof Integer) {
-			return format(((Integer) o).longValue());
-		} else if (o instanceof Long) {
-			return format(((Long) o).longValue());
-		}
-		return null;
 	}
 
 	private String prefix(String... components) {
 		return MetricRegistry.name(prefix, components);
-	}
-
-	private String format(long n) {
-		return Long.toString(n);
-	}
-
-	private String format(double v) {
-		return Double.toString(v);
 	}
 }
